@@ -4,6 +4,9 @@
 #include <sstream>   // for istringstream
 #include <vector>
 
+#include <unistd.h>   // for fork and exec
+#include <sys/wait.h> // for wait
+
 using namespace std;
 
 struct Command {
@@ -56,6 +59,39 @@ Command parseInput(string input) {
     return cmd;
 }
 
+
+// ========================================================== STAGE 3 ==========================================================
+
+void executeCommand(const Command& cmd) {
+    if (cmd.args.empty()) return;
+
+    pid_t pid = fork();    //fork() returns integer values 
+
+    if (pid == 0) {
+        // I am the CHILD → exec the command
+
+        vector<char*> cargs;
+        for (auto& arg : cmd.args) {
+            cargs.push_back(const_cast<char*>(arg.c_str()));
+        }
+
+        cargs.push_back(nullptr); // must end with nullptr to determine the end of the arguments for execvp
+        execvp(cargs[0], cargs.data());
+    }
+
+    else if (pid > 0) {
+        // I am the PARENT → wait for child
+        waitpid(pid, nullptr, 0); // wait for the child process to finish
+    }
+
+    else {
+        // fork failed
+        cerr << "Error: fork failed" << endl;
+    }
+}
+
+
+
 int main() {
     while (true) {
         string userPrompt;
@@ -66,12 +102,13 @@ int main() {
         }
 
         // Parse the user input into tokens.
-        Command tokens = parseInput(userPrompt);
         Command cmd = parseInput(userPrompt);
-        cout << "Command: " << cmd.args[0] << endl;
-        cout << "outFile: " << cmd.outFile << endl;
-        cout << "inFile: " << cmd.inFile << endl;
-        cout << "background: " << cmd.background << endl;
+        // cout << "Command: " << cmd.args[0] << endl;
+        // cout << "outFile: " << cmd.outFile << endl;
+        // cout << "inFile: " << cmd.inFile << endl;
+        // cout << "background: " << cmd.background << endl;
+
+        executeCommand(cmd);
 
     }
     return 0;
