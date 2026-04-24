@@ -6,13 +6,14 @@
 
 #include <unistd.h>   // for fork and exec
 #include <sys/wait.h> // for wait
+#include <fcntl.h>    // for open
 
 using namespace std;
 
 struct Command {
     vector<string> args;    // the command + its arguments
     string outFile;         // file for > or >>
-    string inFile;          // file for <<
+    string inFile;          // file for <
     bool append;            // >> or >?
     bool background;        // & ?
     // struct Command* nextCommand;    // for pipelines
@@ -76,6 +77,19 @@ void executeCommand(const Command& cmd) {
         }
 
         cargs.push_back(nullptr); // must end with nullptr to determine the end of the arguments for execvp
+
+        if (!cmd.outFile.empty()) {
+            int flags = O_WRONLY | O_CREAT | (cmd.append ? O_APPEND : O_TRUNC);
+            int fd = open(cmd.outFile.c_str(), flags, 0644);
+            dup2(fd, 1);
+            close(fd);
+        }
+        if (!cmd.inFile.empty()) {
+            int fd = open(cmd.inFile.c_str(), O_RDONLY);
+            dup2(fd, 0);  // replace stdin
+            close(fd);
+        }
+
         execvp(cargs[0], cargs.data());
     }
 
