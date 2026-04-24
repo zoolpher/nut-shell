@@ -9,7 +9,7 @@ using namespace std;
 struct Command {
     vector<string> args;    // the command + its arguments
     string outFile;         // file for > or >>
-    string inFile;          // file for 
+    string inFile;          // file for <<
     bool append;            // >> or >?
     bool background;        // & ?
     // struct Command* nextCommand;    // for pipelines
