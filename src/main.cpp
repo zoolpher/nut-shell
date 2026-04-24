@@ -19,6 +19,11 @@ struct Command {
     // struct Command* nextCommand;    // for pipelines
 };
 
+
+
+
+// ========================================================== STAGE 2 ==========================================================
+
 Command parseInput(string input) {
     istringstream ss(input);
     string token;
@@ -106,6 +111,70 @@ void executeCommand(const Command& cmd) {
 
 
 
+// ========================================================== STAGE 5 ==========================================================
+/*
+Creates pipelines by splitting the input on the '|' character and parsing each segment as a separate command.
+*/
+
+vector<Command> parsePipeline(string input) {
+    vector<Command> pipeline;
+    istringstream ss(input);
+    string segment;
+    
+    while (getline(ss, segment, '|')) {
+        pipeline.push_back(parseInput(segment));
+    }
+    
+    return pipeline;
+}
+
+void executePipeline(vector<Command>& pipeline) {
+    int pipefd[2];
+    pipe(pipefd); // create the pipe
+
+    // First child - runs left command (ls)
+    pid_t pid1 = fork();
+    if (pid1 == 0) {
+        dup2(pipefd[1], 1); // redirect stdout to write end
+        close(pipefd[0]);   // close unused read end
+        close(pipefd[1]);   // close original write end
+        
+        // exec the first command
+        vector<char*> cargs;
+        for (auto& arg : pipeline[0].args) {
+            cargs.push_back(const_cast<char*>(arg.c_str()));
+        }
+        cargs.push_back(nullptr);
+        execvp(cargs[0], cargs.data());
+
+    }
+
+    // Second child - runs right command (grep)
+    pid_t pid2 = fork();
+    if (pid2 == 0) {
+        dup2(pipefd[0], 0); // redirect stdin to read end
+        close(pipefd[1]);   // close unused write end
+        close(pipefd[0]);   // close original read end
+        
+        // exec the second command
+        vector<char*> cargs;
+        for (auto& arg : pipeline[1].args) {
+            cargs.push_back(const_cast<char*>(arg.c_str()));
+        }
+        cargs.push_back(nullptr);
+        execvp(cargs[0], cargs.data());
+    }
+
+    // Parent
+    close(pipefd[0]);
+    close(pipefd[1]);
+    waitpid(pid1, nullptr, 0);
+    waitpid(pid2, nullptr, 0);
+}
+
+
+
+
 int main() {
     while (true) {
         string userPrompt;
@@ -115,14 +184,13 @@ int main() {
             break;
         }
 
-        // Parse the user input into tokens.
-        Command cmd = parseInput(userPrompt);
-        // cout << "Command: " << cmd.args[0] << endl;
-        // cout << "outFile: " << cmd.outFile << endl;
-        // cout << "inFile: " << cmd.inFile << endl;
-        // cout << "background: " << cmd.background << endl;
-
-        executeCommand(cmd);
+        
+        vector<Command> pipeline = parsePipeline(userPrompt);
+        if (pipeline.size() == 1) {
+            executeCommand(pipeline[0]); // single command, no pipe
+        } else {
+            executePipeline(pipeline); // multiple commands, use pipes
+        }
 
     }
     return 0;
