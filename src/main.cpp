@@ -8,6 +8,8 @@
 #include <sys/wait.h> // for wait
 #include <fcntl.h>    // for open
 
+#include <signal.h>
+
 using namespace std;
 
 struct Command {
@@ -98,8 +100,13 @@ void executeCommand(const Command& cmd) {
         execvp(cargs[0], cargs.data());
     }
 
+
     else if (pid > 0) {
         // I am the PARENT → wait for child
+        if (cmd.background) {
+            cout << "Started background process with PID: " << pid << endl;
+            return; // don't wait, just return to prompt
+        }
         waitpid(pid, nullptr, 0); // wait for the child process to finish
     }
 
@@ -173,9 +180,26 @@ void executePipeline(vector<Command>& pipeline) {
 }
 
 
+void sigchldHandler(int sig) {
+    /*
+        When a child process finishes, it doesn't fully disappear. It stays in the process 
+        table as a zombie 🧟 — waiting for the parent to call waitpid to collect its exit status.
+        For foreground commands — waitpid is called immediately, zombie cleaned up. ✅
+        For background commands — we never call waitpid. So the child finishes but stays as 
+        a zombie forever, wasting resources. 💥
+        sigchldHandler fixes this — when ANY child dies, OS sends SIGCHLD to parent, our 
+        handler calls waitpid(-1, nullptr, WNOHANG) which reaps all finished children immediately. 
+        No zombies! 🎯
+    */
+    while (waitpid(-1, nullptr, WNOHANG) > 0);
+}
+
 
 
 int main() {
+
+    signal(SIGCHLD, sigchldHandler); // set up signal handler for background processes);
+
     while (true) {
         string userPrompt;
         cout<<"(\\) nut-shell-$ ";
